@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ExtensionTargets 위치에서 import. 경로는 Cuda.props에서 결정됨. -->
+<Project>
+  <Import Project="$(CudaBuildCustomizationDir)CUDA $(CudaVersion).targets" />
+</Project>

@@ -1,0 +1,25 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Folder Name="/_Solution Items/">
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="README.md" />
+    <File Path="build/Common.props" />
+    <File Path="build/Cuda.props" />
+    <File Path="build/Cuda.targets" />
+    <File Path="common/cu_common.h" />
+    <File Path="tools/new-project.ps1" />
+  </Folder>
+  <Folder Name="/S0_Setup/">
+    <Project Path="S0_Setup/00_DeviceQuery/00_DeviceQuery.vcxproj" />
+  </Folder>
+  <Folder Name="/S1_ExecModel/">
+    <Project Path="S1_ExecModel/01_VectorAdd/01_VectorAdd.vcxproj" />
+    <Project Path="S1_ExecModel/02_BgrToGray/02_BgrToGray.vcxproj" />
+    <Project Path="S1_ExecModel/03_AsyncAndErrors/03_AsyncAndErrors.vcxproj" />
+  </Folder>
+</Solution>

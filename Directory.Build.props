@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  이 폴더 아래 모든 프로젝트에 자동으로 먼저 적용된다 (Microsoft.Cpp.Default.props가 가져옴).
+  CUDA 버전을 바꿀 땐 여기 CudaVersion 한 줄만 고친다.
+-->
+<Project>
+  <PropertyGroup>
+    <CudaPracticeRoot>$(MSBuildThisFileDirectory)</CudaPracticeRoot>
+    <!-- 설치된 CUDA Toolkit 버전. "CUDA 12.9.props" 파일 이름과 일치해야 한다. -->
+    <CudaVersion>12.9</CudaVersion>
+    <!-- 비워두면 모든 아키텍처로 빌드(느림). 내 GPU CC를 알면 예: sm_89 -->
+    <CudaArch></CudaArch>
+    <!-- CUDA 12.9 는 VS 2026 (MSVC 14.5x) 보다 먼저 나와서 nvcc 가 "unsupported compiler" 로 막을 수 있다.
+         true 면 -allow-unsupported-compiler 를 붙인다. CUDA 를 올리고 문제 없으면 false 로. -->
+    <CudaAllowUnsupportedCompiler>true</CudaAllowUnsupportedCompiler>
+  </PropertyGroup>
+</Project>

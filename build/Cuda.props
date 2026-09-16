@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ExtensionSettings 위치에서 import.
+  1순위: VS에 설치된 BuildCustomizations\CUDA x.y.props
+  2순위: 툴킷 폴더의 extras\visual_studio_integration\MSBuildExtensions (VS 2026에 통합이 안 깔린 경우)
+-->
+<Project>
+  <PropertyGroup>
+    <_CudaVerUnderscore>$(CudaVersion.Replace('.', '_'))</_CudaVerUnderscore>
+    <_CudaToolkitRoot>$([System.Environment]::GetEnvironmentVariable('CUDA_PATH_V$(_CudaVerUnderscore)'))</_CudaToolkitRoot>
+    <_CudaToolkitRoot Condition="'$(_CudaToolkitRoot)' == ''">$(CUDA_PATH)</_CudaToolkitRoot>
+
+    <_CudaVsDir>$([MSBuild]::EnsureTrailingSlash('$(VCTargetsPath)'))BuildCustomizations\</_CudaVsDir>
+    <CudaBuildCustomizationDir Condition="Exists('$(_CudaVsDir)CUDA $(CudaVersion).props')">$(_CudaVsDir)</CudaBuildCustomizationDir>
+    <CudaBuildCustomizationDir Condition="'$(CudaBuildCustomizationDir)' == ''">$([MSBuild]::EnsureTrailingSlash('$(_CudaToolkitRoot)'))extras\visual_studio_integration\MSBuildExtensions\</CudaBuildCustomizationDir>
+  </PropertyGroup>
+
+  <Import Project="$(CudaBuildCustomizationDir)CUDA $(CudaVersion).props" />
+</Project>

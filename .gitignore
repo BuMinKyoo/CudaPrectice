@@ -1,0 +1,33 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+ipch/
+
+# 빌드 산출물
+bin/
+obj/
+x64/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.log
+*.tlog
+*.lastbuildstate
+*.idb
+
+# 프로파일러 원본 리포트 (수치는 README에 옮겨 적는다)
+*.nsys-rep
+*.qdrep
+*.qdstrm
+*.sqlite
+*.ncu-rep
+
+# 예제가 만드는 출력 이미지
+*_out.pgm
+*_out.ppm

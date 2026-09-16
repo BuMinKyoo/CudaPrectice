@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PropertySheets 위치에서 import. 모든 예제 공통 컴파일/링크 설정. -->
+<Project>
+  <PropertyGroup>
+    <OutDir>$(CudaPracticeRoot)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(CudaPracticeRoot)obj\$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <!-- F5 실행 시 작업 폴더 = 프로젝트 폴더 (출력 이미지 등이 여기 생김) -->
+    <LocalDebuggerWorkingDirectory>$(ProjectDir)</LocalDebuggerWorkingDirectory>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(CudaPracticeRoot)common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <CudaCompile>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <AdditionalIncludeDirectories>$(CudaPracticeRoot)common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!-- 한글 주석 때문에 호스트 컴파일러(cl)를 UTF-8 모드로. 없으면 C4819 + 줄 먹힘 버그 가능 -->
+      <AdditionalOptions>-std=c++17 -Xcompiler "/utf-8" %(AdditionalOptions)</AdditionalOptions>
+    </CudaCompile>
+    <CudaCompile Condition="'$(CudaAllowUnsupportedCompiler)' == 'true'">
+      <AdditionalOptions>-allow-unsupported-compiler %(AdditionalOptions)</AdditionalOptions>
+    </CudaCompile>
+    <CudaCompile Condition="'$(CudaArch)' != ''">
+      <AdditionalOptions>-arch=$(CudaArch) %(AdditionalOptions)</AdditionalOptions>
+    </CudaCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(CudaToolkitLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>cudart_static.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)' == 'Debug'">
+    <ClCompile>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <CudaCompile>
+      <Defines>_DEBUG;%(Defines)</Defines>
+    </CudaCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)' == 'Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <CudaCompile>
+      <Defines>NDEBUG;%(Defines)</Defines>
+    </CudaCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>
