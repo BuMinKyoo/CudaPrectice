@@ -85,6 +85,7 @@ static void SavePgm(const char* path, const std::vector<uint8_t>& gray, int w, i
 }
 
 int main(int argc, char** argv) {
+    EnableUtf8Console();          // 콘솔 한글 깨짐 방지
     const int w = (argc > 2) ? std::atoi(argv[1]) : 1920;
     const int h = (argc > 2) ? std::atoi(argv[2]) : 1080;
     const size_t srcBytes = static_cast<size_t>(w) * h * 3;

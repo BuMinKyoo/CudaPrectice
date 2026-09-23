@@ -18,6 +18,7 @@ __global__ void MyKernel(float* data, int n) {
 }
 
 int main() {
+    EnableUtf8Console();          // 콘솔 한글 깨짐 방지
     std::printf("=== __PROJECT_NAME__ ===\n\n");
 
     const int n = 1 << 20;

@@ -4,6 +4,7 @@
 //   DivUp(a, b)          : 올림 나눗셈 (grid 크기 계산)
 //   GpuTimer / CpuTimer  : GPU 이벤트 기반 시간 / CPU 벽시계 시간
 //   Median(v)            : 반복 측정 중앙값
+//   EnableUtf8Console()  : 콘솔 한글 깨짐 방지. main 맨 앞에서 한 번 호출
 #pragma once
 
 #include <cuda_runtime.h>
@@ -13,6 +14,21 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+
+// ---------------------------------------------------------------- 콘솔 출력
+// 소스는 /utf-8 로 컴파일되어 문자열이 UTF-8 바이트로 exe 에 들어간다.
+// 그런데 Windows 콘솔의 기본 코드 페이지는 949(한국어)라 그대로 두면 한글이 깨진다.
+// main 맨 앞에서 한 번 부르면 이 프로세스의 콘솔 출력을 UTF-8 로 맞춘다.
+#ifdef _WIN32
+// windows.h 전체를 끌어오지 않으려고 필요한 함수만 직접 선언한다.
+extern "C" __declspec(dllimport) int __stdcall SetConsoleOutputCP(unsigned int codePage);
+inline void EnableUtf8Console()
+{
+    SetConsoleOutputCP(65001);   // CP_UTF8
+}
+#else
+inline void EnableUtf8Console() {}
+#endif
 
 // ---------------------------------------------------------------- 에러 처리
 #define CUDA_CHECK(call)                                                        \

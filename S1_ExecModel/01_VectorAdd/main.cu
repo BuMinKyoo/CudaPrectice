@@ -42,6 +42,7 @@ static int CountMismatch(const std::vector<float>& ref, const std::vector<float>
 }
 
 int main(int argc, char** argv) {
+    EnableUtf8Console();          // 콘솔 한글 깨짐 방지
     const int n = (argc > 1) ? std::atoi(argv[1]) : 10'000'000;
     const size_t bytes = static_cast<size_t>(n) * sizeof(float);
     const int kRepeat = 15;

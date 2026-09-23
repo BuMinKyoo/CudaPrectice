@@ -112,6 +112,7 @@ static void PartB_LaunchError() {
 }
 
 int main() {
+    EnableUtf8Console();          // 콘솔 한글 깨짐 방지
     std::printf("=== 03_AsyncAndErrors ===\n\n");
     PartA_AsyncLaunch();
     PartB_LaunchError();
