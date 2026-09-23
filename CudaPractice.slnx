@@ -1,7 +1,5 @@
 <Solution>
   <Configurations>
-    <BuildType Name="Debug" />
-    <BuildType Name="Release" />
     <Platform Name="x64" />
   </Configurations>
   <Folder Name="/_Solution Items/">
@@ -15,11 +13,11 @@
     <File Path="tools/new-project.ps1" />
   </Folder>
   <Folder Name="/S0_Setup/">
-    <Project Path="S0_Setup/00_DeviceQuery/00_DeviceQuery.vcxproj" />
+    <Project Path="S0_Setup/00_DeviceQuery/00_DeviceQuery.vcxproj" Id="01d9e413-1895-41c1-acde-1d6280e88c24" />
   </Folder>
   <Folder Name="/S1_ExecModel/">
-    <Project Path="S1_ExecModel/01_VectorAdd/01_VectorAdd.vcxproj" />
-    <Project Path="S1_ExecModel/02_BgrToGray/02_BgrToGray.vcxproj" />
-    <Project Path="S1_ExecModel/03_AsyncAndErrors/03_AsyncAndErrors.vcxproj" />
+    <Project Path="S1_ExecModel/01_VectorAdd/01_VectorAdd.vcxproj" Id="92545637-6e98-4a90-aa15-2d22b08eaaf6" />
+    <Project Path="S1_ExecModel/02_BgrToGray/02_BgrToGray.vcxproj" Id="2c593220-871d-48f6-9c82-2a6048cdb831" />
+    <Project Path="S1_ExecModel/03_AsyncAndErrors/03_AsyncAndErrors.vcxproj" Id="1436ebb5-6e6a-4c08-8ca5-249648fe440a" />
   </Folder>
 </Solution>
