@@ -95,19 +95,42 @@ int main() {
                     totalB / (1024.0 * 1024.0 * 1024.0), freeB / (1024.0 * 1024.0 * 1024.0));
         // 32. 블록 크기를 32의 배수로 잡는 근거 (→ 01 블록 크기 실험)
         std::printf("    warp size          : %d threads\n", props.warpSize);
-        // 1024. 넘기면 런치 에러 (→ 03)
+        // 동시에 일하는 "작은 프로세서" 수. 스레드를 얼마나 띄워야 GPU가 다 차는지의 기준
+        std::printf("    SM count           : %d\n", props.multiProcessorCount);
+        // 화면을 그리는 GPU면 ON → 커널이 2초를 넘으면 Windows가 GPU를 리셋한다
+        std::printf("    kernel timeout(TDR): %s\n", props.kernelExecTimeoutEnabled ? "ON (커널 2초 제한)" : "OFF");
+
+        // ---- 블록 하나가 넘을 수 없는 한계. 넘기면 런치 에러(→ 03)
+        std::printf("\n    [블록 하나의 한계]\n");
         std::printf("    max threads/block  : %d\n", props.maxThreadsPerBlock);
         std::printf("    max grid size      : %d x %d x %d\n",
                     props.maxGridSize[0], props.maxGridSize[1], props.maxGridSize[2]);
         // size_t 이므로 %d 가 아니라 %zu. S2에서 타일 크기를 정하는 기준이 된다
         std::printf("    shared mem/block   : %zu bytes (%.1f KB)\n",
                     props.sharedMemPerBlock, props.sharedMemPerBlock / 1024.0);
-        // occupancy 계산에 쓰인다
         std::printf("    registers/block    : %d\n", props.regsPerBlock);
-        // 동시에 일하는 "작은 프로세서" 수. 스레드를 얼마나 띄워야 GPU가 다 차는지의 기준
-        std::printf("    SM count           : %d\n", props.multiProcessorCount);
-        // 화면을 그리는 GPU면 ON → 커널이 2초를 넘으면 Windows가 GPU를 리셋한다
-        std::printf("    kernel timeout(TDR): %s\n", props.kernelExecTimeoutEnabled ? "ON (커널 2초 제한)" : "OFF");
+
+        // ---- SM 하나가 "동시에" 품을 수 있는 양. 위의 /block 값과 혼동하지 말 것.
+        //      블록이 SM에 올라오면 아래 자리를 동시에 차지하고, 먼저 바닥나는 쪽이 한계가 된다.
+        //      예) block 256 → 스레드 자리에 먼저 걸림: 1536/256 = 블록 6개 (정원 100%)
+        //          block  32 → 블록 자리에 먼저 걸림:  24개뿐 → 768명     (정원  50%)
+        std::printf("\n    [SM 하나의 수용량]\n");
+        // 정원. 코어 수(128 등)와는 다른 개념 — 동시에 "머무는" 수이지 동시에 "계산하는" 수가 아니다
+        std::printf("    max threads/SM     : %d  (warp %d개분)\n",
+                    props.maxThreadsPerMultiProcessor,
+                    props.maxThreadsPerMultiProcessor / props.warpSize);
+        // SM 이 블록별 관리 정보(blockIdx, shared 영역, __syncthreads 상태)를 담아 두는 칸 수
+        std::printf("    max blocks/SM      : %d\n", props.maxBlocksPerMultiProcessor);
+        // 위 정원의 근거. 스레드마다 자기 레지스터를 미리 배정받기 때문에 전환 비용이 0 이다
+        std::printf("    registers/SM       : %d  (스레드당 약 %d개)\n",
+                    props.regsPerMultiprocessor,
+                    props.regsPerMultiprocessor / props.maxThreadsPerMultiProcessor);
+        std::printf("    shared mem/SM      : %zu bytes (%.1f KB)\n",
+                    props.sharedMemPerMultiprocessor, props.sharedMemPerMultiprocessor / 1024.0);
+        // 이 GPU 전체가 동시에 품는 스레드 수. 이만큼은 띄워야 GPU 가 꽉 찬다
+        std::printf("    → GPU 전체 동시 상주 : %d threads (%d SM x %d)\n",
+                    props.maxThreadsPerMultiProcessor * props.multiProcessorCount,
+                    props.multiProcessorCount, props.maxThreadsPerMultiProcessor);
 
         // ---- ④ 실제 동작 검증. printf 인자가 먼저 평가되므로 테스트가 끝난 뒤 결과가 찍힌다
         //      현재 디바이스에서 돌기 때문에 GPU가 여러 개면 각각 따로 검증된다
