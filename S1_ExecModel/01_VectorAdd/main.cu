@@ -21,6 +21,12 @@ __global__ void VecAdd(const float* a, const float* b, float* c, int n) {
     if (i < n) {                       // 반올림으로 남는 스레드는 아무것도 안 한다
         c[i] = a[i] + b[i];
     }
+
+    // ① 스레드를 n개 이상 만들었다
+    // ② 만든 블록은 하나도 빠짐없이 실행된다
+    // 스레드 1개 = 원소 1개 만 담당
+    // 순서는 전혀 보장되지 않습니다
+    // c[0]이 c[9999999]보다 먼저 계산된다는 보장이 없다
 }
 
 // grid-stride: 각 스레드가 "grid 전체 스레드 수" 간격으로 건너뛰며 여러 원소를 맡는다.
@@ -30,6 +36,10 @@ __global__ void VecAddGridStride(const float* a, const float* b, float* c, int n
     for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += stride) {
         c[i] = a[i] + b[i];
     }
+
+	// 여기에서는 각자의 스레드가 시작될때, 자기의 고유 id가 있는데, 전체를 더해줌으로써 서로 다른 스레드가 겹치지 않게 원소를 처리할 수 있다.
+    // blockDim : 블록 하나에 스레드가 몇 개인가
+	// gridDim : 그리드에 블록이 몇 개인가
 }
 
 // ---------------------------------------------------------------- 헬퍼
@@ -43,11 +53,11 @@ static int CountMismatch(const std::vector<float>& ref, const std::vector<float>
 
 int main(int argc, char** argv) {
     EnableUtf8Console();          // 콘솔 한글 깨짐 방지
-    const int n = (argc > 1) ? std::atoi(argv[1]) : 10'000'000;
-    const size_t bytes = static_cast<size_t>(n) * sizeof(float);
-    const int kRepeat = 15;
+	const int n = (argc > 1) ? std::atoi(argv[1]) : 10'000'000; // 벡터 원소 수
+    const size_t bytes = static_cast<size_t>(n) * sizeof(float);  // 바이트 구하기
+	const int kRepeat = 15; // 커널 시간 측정 반복 횟수
 
-    std::printf("=== 01_VectorAdd  N = %d (%.1f MB per vector) ===\n\n", n, bytes / 1048576.0);
+    std::printf("=== 01_VectorAdd  N = %d (%.1f MB per vector) ===\n\n", n, bytes / 1048576.0); // 1048576 = 1024 × 1024 = 1 MB의 바이트 수
 
     // ---- 호스트 데이터
     std::vector<float> a(n), b(n), cCpu(n), cGpu(n);
@@ -57,6 +67,7 @@ int main(int argc, char** argv) {
     }
 
     // ---- CPU 기준값 + 시간
+	// CPU 벡터 덧셈, 나중에 GPU 결과와 비교용
     CpuTimer cpu;
     cpu.Start();
     for (int i = 0; i < n; ++i) cCpu[i] = a[i] + b[i];
@@ -73,6 +84,7 @@ int main(int argc, char** argv) {
     GpuTimer t;
 
     t.Start();
+	// ---- H2D 시간, CPU에 있는 것을 GPU로 복사 (2개 벡터)
     CUDA_CHECK(cudaMemcpy(dA, a.data(), bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(dB, b.data(), bytes, cudaMemcpyHostToDevice));
     t.Stop();
@@ -85,7 +97,7 @@ int main(int argc, char** argv) {
 
     // =========================================================== A) 블록 크기 스윕
     std::printf("[A] block size sweep (kernel only, median of %d)\n\n", kRepeat);
-    std::printf("| block | grid | total threads | kernel ms | vs CPU | correct |\n");
+    std::printf("| 1개의 block의 스레드수 | block의 수 | total threads | GPU커널 계산 시간 | CPU보다 몇배빠른지 | correct |\n");
     std::printf("|---:|---:|---:|---:|---:|:---:|\n");
 
     const int blockSizes[] = {8, 16, 32, 100, 128, 256, 512, 1024};
@@ -94,6 +106,7 @@ int main(int argc, char** argv) {
         std::vector<double> samples;
         samples.reserve(kRepeat);
 
+		// kRepeat 만큼 반복해서 커널 시간 측정 → 중앙값을 사용
         for (int r = 0; r < kRepeat; ++r) {
             t.Start();
             VecAdd<<<grid, block>>>(dA, dB, dC, n);
@@ -102,9 +115,10 @@ int main(int argc, char** argv) {
             samples.push_back(t.ElapsedMs());
         }
 
+		// VecAdd<<<grid, block>>>(dA, dB, dC, n); 여기에서 계산한 값을 CPU와 비교하기 위해 다시 GPU → CPU 복사
         CUDA_CHECK(cudaMemcpy(cGpu.data(), dC, bytes, cudaMemcpyDeviceToHost));
         const int bad = CountMismatch(cCpu, cGpu);
-        const double ms = Median(samples);
+		const double ms = Median(samples); // 중앙값 계산
 
         std::printf("| %4d | %8d | %10lld | %8.3f | %6.1fx | %s |\n",
                     block, grid, static_cast<long long>(grid) * block, ms,
@@ -113,7 +127,7 @@ int main(int argc, char** argv) {
 
     // =========================================================== B) grid-stride
     std::printf("\n[B] grid-stride loop (block 256)\n\n");
-    std::printf("| grid | total threads | elems/thread | kernel ms | correct |\n");
+    std::printf("| block의 수 | total threads | 스레드당 원소 수 | GPU커널 계산 시간 | correct |\n");
     std::printf("|---:|---:|---:|---:|:---:|\n");
 
     const int gridsForStride[] = {1, 64, 4096, DivUp(n, 256)};
@@ -121,6 +135,7 @@ int main(int argc, char** argv) {
         std::fill(cGpu.begin(), cGpu.end(), 0.0f);
         CUDA_CHECK(cudaMemcpy(dC, cGpu.data(), bytes, cudaMemcpyHostToDevice)); // 이전 결과 지우기
 
+		// kRepeat 만큼 반복해서 커널 시간 측정 → 중앙값을 사용
         std::vector<double> samples;
         for (int r = 0; r < kRepeat; ++r) {
             t.Start();
