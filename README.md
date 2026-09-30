@@ -32,7 +32,7 @@ CudaPrectice/
 │  ├─ 04_Transpose            coalescing, 공유 메모리로 접근 순서 바꾸기, bank conflict
 │  └─ 05_BlurShared           공유 메모리로 중복 읽기 없애기, halo(apron)
 └─ S3_Reduction/
-   └─ 06_Reduction            warp divergence, __shfl_down_sync, atomicAdd, float 결합법칙
+   └─ 06_Reduction            atomicAdd 경합, warp divergence, coarsening, float 결합법칙
 ```
 빌드 결과는 `bin/x64/<Config>/`, 중간 파일은 `obj/` (둘 다 git 제외).
 
@@ -84,7 +84,7 @@ S0~S3 은 실제로 만들어져 있다. S4~S7 은 기존 예제 주석에 "여�
 | S0 | 환경 확인, smoke test | 구현됨 | 완료 |
 | S1 | 실행 모델 — 블록/warp, 2D 인덱싱, 비동기 런치, 에러 처리 | 구현됨 | 필수 |
 | S2 | 메모리 — coalescing, 공유 메모리, bank conflict, halo | 구현됨 | **필수** (성능 대부분이 여기서 나온다) |
-| S3 | 리덕션 — warp divergence, warp shuffle, atomicAdd, float 결합법칙 | 구현됨 | **필수** (합계·최댓값·내적·노름·소프트맥스가 전부 이것) |
+| S3 | 리덕션 — 경쟁 상태, atomicAdd 경합, warp divergence, coarsening, float 결합법칙 | 구현됨 | **필수** (합계·최댓값·내적·노름·소프트맥스가 전부 이것) |
 | S4 | 검증 — `compute-sanitizer`, sticky 에러, 경쟁 상태 | `01/README.md`, `03/main.cu:20` | **필수** (간헐적 버그는 눈으로 못 찾는다) |
 | S5 | 전송 — pinned memory, `cudaMallocPitch` | `01/main.cu`, `02/README.md` | 실시간 파이프라인이면 필수 |
 | S6~S7 | 스트림 — CPU·GPU 겹치기, 실시간 루프 | `03/main.cu:78`, `03/README.md` | 실시간 파이프라인이면 필수 |
