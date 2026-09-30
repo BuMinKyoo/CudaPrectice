@@ -24,10 +24,13 @@ CudaPrectice/
 ├─ tools/new-project.ps1      템플릿 복사 + 솔루션 등록
 ├─ S0_Setup/
 │  └─ 00_DeviceQuery          드라이버/툴킷/GPU 확인 + smoke test
-└─ S1_ExecModel/
-   ├─ 01_VectorAdd            블록 크기 스윕, grid-stride loop
-   ├─ 02_BgrToGray            2D 인덱싱, BGR → gray, CPU와 바이트 비교
-   └─ 03_AsyncAndErrors       비동기 런치, cudaEvent 시간, 런치 에러
+├─ S1_ExecModel/
+│  ├─ 01_VectorAdd            블록 크기 스윕, grid-stride loop
+│  ├─ 02_BgrToGray            2D 인덱싱, BGR → gray, CPU와 바이트 비교
+│  └─ 03_AsyncAndErrors       비동기 런치, cudaEvent 시간, 런치 에러
+└─ S2_Memory/
+   ├─ 04_Transpose            coalescing, 공유 메모리로 접근 순서 바꾸기, bank conflict
+   └─ 05_BlurShared           공유 메모리로 중복 읽기 없애기, halo(apron)
 ```
 빌드 결과는 `bin/x64/<Config>/`, 중간 파일은 `obj/` (둘 다 git 제외).
 
@@ -36,7 +39,7 @@ CudaPrectice/
 2. 구성 **Release | x64**
 3. `00_DeviceQuery` 를 시작 프로젝트로 → 실행 → smoke test `OK` 확인
 4. 출력된 `sm_XY` 를 `Directory.Build.props` 의 `CudaArch` 에 넣기 (빌드 시간 단축)
-5. `01` → `02` → `03` 순서로 실행하고 각 README 표 채우기
+5. `01` → `02` → `03` → `04` → `05` 순서로 실행하고 각 README 표 채우기
 
 ## 새 예제 추가
 ```powershell
@@ -52,6 +55,10 @@ CudaPrectice/
 3. 시간은 `GpuTimer` + 반복 후 `Median`, 첫 런치는 워밍업으로 버린다
 4. GPU 결과는 항상 CPU 기준 구현과 비교한다
 5. 숫자는 README 표에, 해석은 한 줄씩
+6. `printf` 문자열은 **ASCII 로 끝낸다.** 한글 바로 뒤의 `\n` 은 literal 로 깨진다
+   (`-Xcompiler "/utf-8"` 은 cl 에만 가고 nvcc 프론트엔드엔 안 간다)
+   - 나쁜 예: `printf("스레드당 %d 칸\n")` → 화면에 `칸\n` 이 그대로 찍힌다
+   - 좋은 예: `printf("스레드당 %d cells\n")`
 
 ## 진행 상황
 | 단계 | 프로젝트 | 상태 |
@@ -61,12 +68,15 @@ CudaPrectice/
 | S1 | 02_BgrToGray | ⬜ |
 | S1 | 03_AsyncAndErrors | ⬜ |
 | S1 | `preprocess.cu` 읽고 S1 개념 주석 달기 (원본 레포에서) | ⬜ |
-| S2 | 04_Transpose, 05_BlurShared, … | 예정 |
+| S2 | 04_Transpose | ⬜ |
+| S2 | 05_BlurShared | ⬜ |
 
 ## 빌드가 안 될 때
 | 증상 | 조치 |
 |---|---|
 | `CUDA 12.9.props` 를 찾을 수 없음 | VS 2026 에 CUDA 통합이 안 깔린 경우. `build/Cuda.props` 가 `%CUDA_PATH_V12_9%\extras\visual_studio_integration\MSBuildExtensions` 로 자동 fallback 한다. 그래도 안 되면 그 폴더 파일 4개를 `C:\Program Files\Microsoft Visual Studio\18\<Edition>\MSBuild\Microsoft\VC\v180\BuildCustomizations\` 에 복사 |
+| `MSB8070: MSVC 도구 집합 버전 '14.44.35207' 을 찾을 수 없습니다` | 그 VS 에디션에 14.44 가 없는 것. **VS Installer → 해당 에디션 `수정` → 개별 구성 요소 → `14.44` 검색 → `MSVC v143 - VS 2022 C++ x64/x86 빌드 도구 (v14.44-17.14)` 체크**. 에디션마다 따로 설치해야 한다 (Professional 에 있어도 Community 엔 없을 수 있음) |
+| `nvcc error : 'cudafe++' died with status 0xC0000005` | MSVC 14.5x 로 빌드된 것. CUDA 12.x 는 14.4x 까지만 지원한다. `Directory.Build.props` 의 `VCToolsVersion` 이 살아 있는지 확인 |
 | `unsupported Microsoft Visual Studio version` | `Directory.Build.props` 의 `CudaAllowUnsupportedCompiler` 가 `true` 인지 확인 |
 | STL 에서 `unexpected compiler version` 류 에러 | `build/Common.props` 의 CudaCompile `AdditionalOptions` 에 `-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH` 추가 |
 | C4819 (코드 페이지) 경고, 이상한 문법 에러 | `/utf-8` 이 빠진 것. `build/Common.props` 확인 |
