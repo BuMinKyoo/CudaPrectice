@@ -20,4 +20,8 @@
     <Project Path="S1_ExecModel/02_BgrToGray/02_BgrToGray.vcxproj" Id="2c593220-871d-48f6-9c82-2a6048cdb831" />
     <Project Path="S1_ExecModel/03_AsyncAndErrors/03_AsyncAndErrors.vcxproj" Id="1436ebb5-6e6a-4c08-8ca5-249648fe440a" />
   </Folder>
+  <Folder Name="/S2_Memory/">
+    <Project Path="S2_Memory/04_Transpose/04_Transpose.vcxproj" Id="54ea98bc-c578-4e3d-86be-f179ed8337d8" />
+    <Project Path="S2_Memory/05_BlurShared/05_BlurShared.vcxproj" />
+  </Folder>
 </Solution>
