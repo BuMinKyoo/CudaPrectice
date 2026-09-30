@@ -28,9 +28,11 @@ CudaPrectice/
 │  ├─ 01_VectorAdd            블록 크기 스윕, grid-stride loop
 │  ├─ 02_BgrToGray            2D 인덱싱, BGR → gray, CPU와 바이트 비교
 │  └─ 03_AsyncAndErrors       비동기 런치, cudaEvent 시간, 런치 에러
-└─ S2_Memory/
-   ├─ 04_Transpose            coalescing, 공유 메모리로 접근 순서 바꾸기, bank conflict
-   └─ 05_BlurShared           공유 메모리로 중복 읽기 없애기, halo(apron)
+├─ S2_Memory/
+│  ├─ 04_Transpose            coalescing, 공유 메모리로 접근 순서 바꾸기, bank conflict
+│  └─ 05_BlurShared           공유 메모리로 중복 읽기 없애기, halo(apron)
+└─ S3_Reduction/
+   └─ 06_Reduction            warp divergence, __shfl_down_sync, atomicAdd, float 결합법칙
 ```
 빌드 결과는 `bin/x64/<Config>/`, 중간 파일은 `obj/` (둘 다 git 제외).
 
@@ -39,7 +41,7 @@ CudaPrectice/
 2. 구성 **Release | x64**
 3. `00_DeviceQuery` 를 시작 프로젝트로 → 실행 → smoke test `OK` 확인
 4. 출력된 `sm_XY` 를 `Directory.Build.props` 의 `CudaArch` 에 넣기 (빌드 시간 단축)
-5. `01` → `02` → `03` → `04` → `05` 순서로 실행하고 각 README 표 채우기
+5. `01` → `02` → `03` → `04` → `05` → `06` 순서로 실행하고 각 README 표 채우기
 
 ## 새 예제 추가
 ```powershell
@@ -70,18 +72,19 @@ CudaPrectice/
 | S1 | `preprocess.cu` 읽고 S1 개념 주석 달기 (원본 레포에서) | ⬜ |
 | S2 | 04_Transpose | ⬜ |
 | S2 | 05_BlurShared | ⬜ |
+| S3 | 06_Reduction | ⬜ |
 
 ## 로드맵 (S0~S10)
 
-S0~S2 는 실제로 만들어져 있다. S4~S7 은 기존 예제 주석에 "여기서 다시 본다" 로
-예고되어 있어 주제가 정해져 있다. **S3 과 S8~S10 은 아직 정해진 내용이 없다.**
+S0~S3 은 실제로 만들어져 있다. S4~S7 은 기존 예제 주석에 "여기서 다시 본다" 로
+예고되어 있어 주제가 정해져 있다. **S8~S10 은 아직 정해진 내용이 없다.**
 
 | 단계 | 주제 | 근거 | 필요도 |
 |---|---|---|---|
 | S0 | 환경 확인, smoke test | 구현됨 | 완료 |
 | S1 | 실행 모델 — 블록/warp, 2D 인덱싱, 비동기 런치, 에러 처리 | 구현됨 | 필수 |
 | S2 | 메모리 — coalescing, 공유 메모리, bank conflict, halo | 구현됨 | **필수** (성능 대부분이 여기서 나온다) |
-| S3 | 미정 | — | — |
+| S3 | 리덕션 — warp divergence, warp shuffle, atomicAdd, float 결합법칙 | 구현됨 | **필수** (합계·최댓값·내적·노름·소프트맥스가 전부 이것) |
 | S4 | 검증 — `compute-sanitizer`, sticky 에러, 경쟁 상태 | `01/README.md`, `03/main.cu:20` | **필수** (간헐적 버그는 눈으로 못 찾는다) |
 | S5 | 전송 — pinned memory, `cudaMallocPitch` | `01/main.cu`, `02/README.md` | 실시간 파이프라인이면 필수 |
 | S6~S7 | 스트림 — CPU·GPU 겹치기, 실시간 루프 | `03/main.cu:78`, `03/README.md` | 실시간 파이프라인이면 필수 |
