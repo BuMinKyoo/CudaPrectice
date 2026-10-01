@@ -9,13 +9,6 @@
 //   C) TransposeShared       타일을 공유 메모리에 올려 읽기·쓰기 둘 다 연속으로
 //   D) TransposeSharedPadded C + 패딩 한 칸으로 bank conflict 제거
 //
-// 그리고 덤으로 — A~D 는 원소를 "한 번씩" 읽는다. 공유 메모리가 접근 순서를 바꾸는
-// 환승역 역할만 했다. E/F 는 원소를 "여러 번" 읽는 경우다. 같은 값을 반복해서
-// 읽을 때 공유 메모리로 중복을 없애는 것 — 이게 공유 메모리의 본래 목적이다.
-//   E) StencilNaive          가로 (2R+1)칸 합. 스레드마다 전역 메모리를 (2R+1)번 읽는다
-//   F) StencilShared         필요한 (32+2R)칸을 공유 메모리에 한 번 올리고 거기서 읽는다
-//   -> RADIUS 를 키우면 재사용이 커진다. 측정값은 README 참고 (R=2 는 차이가 0 이다)
-//
 // 사용법:  04_Transpose.exe [N]      (기본 N = 4096, 정사각 N x N)
 
 #include "cu_common.h"
@@ -30,11 +23,6 @@
 //   256 : 02 의 블록 모양 스윕에서 제일 빨랐던 크기
 #define TILE_DIM   32
 #define BLOCK_ROWS 8
-
-// E/F 전용 — 가로 5칸(= 2*RADIUS+1) 합. 재사용 배수를 바꿔보려면 여기만 고친다.
-#define RADIUS   2
-#define TAPS     (2 * RADIUS + 1)
-#define ROW_W    (TILE_DIM + 2 * RADIUS)   // 공유 메모리 행 길이 = 36
 
 // ---------------------------------------------------------------- A) 기준선
 // 전치를 안 하고 그냥 복사한다. 읽기도 쓰기도 연속이라 이 GPU 가 낼 수 있는
@@ -210,124 +198,6 @@ __global__ void TransposeSharedPadded(const float* in, float* out, int n) {
     }
 }
 
-// ================================================================ 재사용 (E/F)
-// A~D 는 원소를 한 번씩만 읽었다. 공유 메모리는 "순서"를 바꾸는 환승역이었다.
-// E/F 는 같은 원소를 여러 번 읽는다. 공유 메모리로 "중복"을 없앤다.
-//
-// 문제: 가로 5칸 합   out[y][x] = in[y][x-2] + in[y][x-1] + in[y][x] + in[y][x+1] + in[y][x+2]
-//   출력 1픽셀에 입력 5개가 필요한데, 바로 옆 픽셀도 그 중 4개를 똑같이 쓴다.
-//
-// 블록당 전역 읽기 (블록 = 32x8 = 256 스레드, 출력 256픽셀, R=2 일 때)
-//   E) 256 픽셀 x 5 = 1280 회
-//   F) 36 x 8       =  288 회     ->  4.44배 감소
-//
-// 그런데 R=2 에서는 실제 시간이 "전혀" 안 줄어든다 (측정 1.00x).
-// L1 캐시가 중복 읽기를 이미 다 건져주고 있기 때문이다. RADIUS 를 키워서
-// 재사용을 늘리면 캐시만으로 부족해지고 비로소 공유 메모리가 이긴다.
-//   R= 2 (5칸)   트래픽 4.44x 감소  ->  시간 1.00x
-//   R= 8 (17칸)  트래픽 11.3x 감소  ->  시간 1.21x
-//   R=16 (33칸)  트래픽 16.5x 감소  ->  시간 1.62x
-//   R=32 (65칸)  트래픽 21.7x 감소  ->  시간 1.87x
-// "트래픽을 줄인 배수" 와 "시간이 줄어든 배수" 의 격차가 곧 캐시의 몫이다.
-//
-// halo(apron): 타일 가장자리를 계산하려면 타일 "밖" 이웃도 필요하다.
-//   32칸을 출력하려면 왼쪽 2칸 + 오른쪽 2칸을 더 읽어야 한다 -> 36칸
-//
-// 여기는 가로 방향만 하므로 halo 가 좌우 2칸씩뿐이다. 그래서 읽을 칸(36x8=288)이
-// 스레드 수(256)와 비슷해서 "전원 1칸 + 왼쪽 2명이 좌우 halo" 로 if 한 줄에 끝난다.
-//
-// [2D 로 확장할 때] 5x5 처럼 세로 halo 까지 필요하면 읽을 칸이 (32+4)x(8+4)=432 로
-// 스레드 수(256)를 넘는다. 그러면 1:1 배정이 불가능해서 로딩 루프를 써야 한다.
-// 2D 좌표로는 균등 배분이 불편하니 블록 안 번호를 납작하게 만들어 돌린다.
-//
-//   const int tid      = threadIdx.y * blockDim.x + threadIdx.x;   // 0~255
-//   const int nthreads = blockDim.x * blockDim.y;
-//   for (int i = tid; i < HALO_W * HALO_H; i += nthreads) {        // 블록 안 grid-stride
-//       const int lx = i % HALO_W;     // 이 순서여야 warp 가 연속으로 읽는다
-//       const int ly = i / HALO_W;     // (뒤집으면 세로로 읽어서 coalescing 깨짐)
-//       tile[ly][lx] = SampleClamped(in, x0 + lx, y0 + ly, n);
-//   }
-//
-// 2D 컨볼루션, 행렬곱 타일링 등 "타일이 스레드보다 큰" 경우에 계속 쓰는 패턴이다.
-//
-// 나눗셈(/5)을 일부러 안 한다. 합까지만 하면 입력이 정수값이라 중간합도 float 에
-// 정확히 들어가서(최대 5x999999 < 2^24) CPU 와 비트 단위로 같아야 한다.
-// -> A~D 와 똑같이 mismatch 0 을 검증 기준으로 쓸 수 있다.
-
-// 이미지 밖은 가장자리 값을 복제한다(clamp). CPU 기준 구현도 똑같이 해야 한다.
-__host__ __device__ inline int ClampIdx(int v, int lo, int hi) {
-    if (v < lo) {
-        return lo;
-    }
-    if (v > hi) {
-        return hi;
-    }
-    return v;
-}
-
-__device__ inline float SampleClamped(const float* img, int x, int y, int n) {
-    return img[static_cast<size_t>(ClampIdx(y, 0, n - 1)) * n + ClampIdx(x, 0, n - 1)];
-}
-
-// ---------------------------------------------------------------- E) 순진한 5칸 합
-// 스레드마다 전역 메모리를 5번 읽는다. 이웃 스레드와 4칸이 겹치지만 알 방법이 없어 각자 또 읽는다.
-// 주의 — 이 읽기는 coalescing 이 잘 된다. warp 32명이 dx 마다 연속된 32칸을 읽는다.
-//        즉 B 커널과 달리 "패턴" 문제가 아니라 순전히 "횟수" 문제다.
-__global__ void StencilNaive(const float* in, float* out, int n) {
-    const int x = blockIdx.x * TILE_DIM + threadIdx.x;
-    const int y = blockIdx.y * BLOCK_ROWS + threadIdx.y;
-    if (x >= n || y >= n) {
-        return;
-    }
-
-    float sum = 0.0f;
-    for (int dx = -RADIUS; dx <= RADIUS; ++dx) {
-        sum += SampleClamped(in, x + dx, y, n);
-    }
-    out[static_cast<size_t>(y) * n + x] = sum;
-}
-
-// ---------------------------------------------------------------- F) 공유 메모리 + halo
-// 1단계 블록이 필요한 36칸을 공유 메모리에 올린다 (전원 1칸 + tx 0,1 이 좌우 halo)
-// 2단계 __syncthreads()   내 5칸 중 halo 는 "남이" 올린 칸이다
-// 3단계 공유 메모리에서 5번 읽는다. 전역 메모리는 더 안 건드린다
-__global__ void StencilShared(const float* in, float* out, int n) {
-    __shared__ float row[BLOCK_ROWS][ROW_W];   // 8 x 36 = 1152 bytes
-
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    const int x  = blockIdx.x * TILE_DIM + tx;
-    const int y  = blockIdx.y * BLOCK_ROWS + ty;
-
-    // 가운데 32칸은 전원이 하나씩 (row[ty][2] ~ row[ty][33])
-    row[ty][tx + RADIUS] = SampleClamped(in, x, y, n);
-
-    // 좌우 halo 4칸은 tx 0,1 두 명이 각각 2칸씩 맡는다
-    //   row[ty][0], row[ty][1]    <- 내 블록 왼쪽 밖 2칸
-    //   row[ty][34], row[ty][35]  <- 내 블록 오른쪽 밖 2칸
-    if (tx < RADIUS) {
-        row[ty][tx]                     = SampleClamped(in, x - RADIUS, y, n);
-        row[ty][tx + RADIUS + TILE_DIM] = SampleClamped(in, x + TILE_DIM, y, n);
-    }
-
-    // 장벽 "앞에서" return 하면 안 된다. 일부 스레드만 빠져나가면 나머지는 영원히
-    // 기다린다(deadlock). 그래서 경계 검사를 장벽 뒤로 미뤘다.
-    // 위 로딩은 SampleClamped 가 범위를 잡아주므로 경계 블록에서도 안전하다.
-    __syncthreads();
-
-    if (x >= n || y >= n) {
-        return;
-    }
-
-    // 내 픽셀은 row[ty][tx + RADIUS] 다. 루프를 -RADIUS..+RADIUS 대신 0..2*RADIUS 로
-    // 돌려서 그 오프셋을 흡수했다 -> 식에 + RADIUS 가 안 보이는 이유.
-    float sum = 0.0f;
-    for (int dx = 0; dx <= 2 * RADIUS; ++dx) {
-        sum += row[ty][tx + dx];
-    }
-    out[static_cast<size_t>(y) * n + x] = sum;
-}
-
 // ---------------------------------------------------------------- 헬퍼
 // 전치는 값을 옮기기만 하므로 CPU 와 GPU 결과가 비트 단위로 같아야 한다.
 // 계산이 없어서 부동소수점 오차가 끼어들 여지가 아예 없다
@@ -336,19 +206,6 @@ static void TransposeCpu(const std::vector<float>& in, std::vector<float>& out, 
     for (int y = 0; y < n; ++y) {
         for (int x = 0; x < n; ++x) {
             out[static_cast<size_t>(x) * n + y] = in[static_cast<size_t>(y) * n + x];
-        }
-    }
-}
-
-// E/F 의 정답지. 커널과 같은 clamp 규칙을 써야 한다.
-static void StencilCpu(const std::vector<float>& in, std::vector<float>& out, int n) {
-    for (int y = 0; y < n; ++y) {
-        for (int x = 0; x < n; ++x) {
-            float sum = 0.0f;
-            for (int dx = -RADIUS; dx <= RADIUS; ++dx) {
-                sum += in[static_cast<size_t>(y) * n + ClampIdx(x + dx, 0, n - 1)];
-            }
-            out[static_cast<size_t>(y) * n + x] = sum;
         }
     }
 }
@@ -440,17 +297,7 @@ int main(int argc, char** argv) {
     cpu.Start();
     TransposeCpu(hIn, hRefT, n);
     const double cpuMs = cpu.ElapsedMs();
-    std::printf(" %.1f ms\n", cpuMs);
-
-    // ---- E/F 용 CPU 기준 (가로 5칸 합)
-    std::printf("CPU 기준 5-tap 합 계산 중...");
-    std::fflush(stdout);
-    std::vector<float> hRefS(elems);
-    CpuTimer cpuS;
-    cpuS.Start();
-    StencilCpu(hIn, hRefS, n);
-    const double cpuStencilMs = cpuS.ElapsedMs();
-    std::printf(" %.1f ms\n\n", cpuStencilMs);
+    std::printf(" %.1f ms\n\n", cpuMs);
 
     // ---- 디바이스 메모리
     float* dIn  = nullptr;
@@ -483,18 +330,6 @@ int main(int argc, char** argv) {
     const Result rPadded = RunAndCheck(
         [&] { TransposeSharedPadded<<<grid, block>>>(dIn, dOut, n); }, dOut, hRefT, scratch, kRepeat);
 
-    // E/F 는 스레드 하나가 출력 1픽셀이라 그리드 모양이 다르다.
-    // (A~D 는 32x32 타일을 32x8 스레드가 4번 돌아 맡았다)
-    const dim3 gridStencil(DivUp(n, TILE_DIM), DivUp(n, BLOCK_ROWS));
-
-    clearOut();
-    const Result rStNaive = RunAndCheck(
-        [&] { StencilNaive<<<gridStencil, block>>>(dIn, dOut, n); }, dOut, hRefS, scratch, kRepeat);
-
-    clearOut();
-    const Result rStShared = RunAndCheck(
-        [&] { StencilShared<<<gridStencil, block>>>(dIn, dOut, n); }, dOut, hRefS, scratch, kRepeat);
-
     // ---- 표
     std::printf("| 커널 | kernel ms | 실효 대역폭 | Copy 대비 | mismatch |\n");
     std::printf("|---|---:|---:|---:|---:|\n");
@@ -515,29 +350,6 @@ int main(int argc, char** argv) {
 
     std::printf("\n[참고] CPU 전치 %.1f ms  ->  D 대비 %.0fx\n", cpuMs, cpuMs / rPadded.ms);
     std::printf("       A) Copy 는 전치를 하지 않으므로 비교 기준이 원본(hIn)이다.\n");
-
-    // ---- E/F 표: 재사용 (A~D 와 성격이 달라 표를 따로 둔다)
-    // A~D 는 읽기·쓰기 양이 모두 같아서 "실효 대역폭" 으로 줄세울 수 있었다.
-    // E/F 는 읽는 양 자체가 다르다(5배). 그래서 대역폭 대신 "픽셀당 전역 읽기" 를 본다.
-    const double readsNaive  = TAPS;
-    const double readsShared = static_cast<double>(ROW_W * BLOCK_ROWS) /
-                               (TILE_DIM * BLOCK_ROWS);
-    std::printf("\n=== E/F) 재사용 — 가로 %d칸 합 ===\n", TAPS);
-    std::printf("공유 메모리 %zu bytes/block, 출력 1픽셀당 전역 읽기 %.0f -> %.3f (%.2fx)\n\n",
-                sizeof(float) * ROW_W * BLOCK_ROWS, readsNaive, readsShared,
-                readsNaive / readsShared);
-
-    std::printf("| 커널 | kernel ms | naive 대비 | 픽셀당 전역 읽기 | mismatch |\n");
-    std::printf("|---|---:|---:|---:|---:|\n");
-    std::printf("| E) StencilNaive  | %8.3f | %6.2fx | %6.0f | %zu |\n",
-                rStNaive.ms, 1.0, readsNaive, rStNaive.bad);
-    std::printf("| F) StencilShared | %8.3f | %6.2fx | %6.3f | %zu |\n",
-                rStShared.ms, rStNaive.ms / rStShared.ms, readsShared, rStShared.bad);
-
-    std::printf("\n[참고] CPU 5-tap %.1f ms  ->  F 대비 %.0fx\n",
-                cpuStencilMs, cpuStencilMs / rStShared.ms);
-    std::printf("       E->F 가 %.2fx 보다 작으면 L1/L2 캐시가 이미 중복 읽기를 건져준 것이다.\n",
-                readsNaive / readsShared);
 
     CUDA_CHECK(cudaFree(dIn));
     CUDA_CHECK(cudaFree(dOut));
