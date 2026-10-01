@@ -91,6 +91,12 @@ int main() {
         std::printf("    Compute Capability : %d.%d   → Directory.Build.props CudaArch = sm_%d%d\n",
                     props.major, props.minor, props.major, props.minor);
         // 1024.0 처럼 실수로 나눈다. 정수로 나누면 소수점이 잘린다
+        // 이 GB 는 GPU 칩 "바깥" 기판 위의 GDDR 칩(전역 메모리)만 센 값이다.
+        // 아래 [SM 하나의 수용량] 의 shared mem 은 칩 "안" SRAM 이라 여기 포함되지 않는다.
+        //   VRAM        칩 바깥 DRAM   ~500 사이클   수 GB      <- cudaMalloc 이 잡는 곳
+        //   공유 메모리  칩 안   SRAM   ~30 사이클   SM당 수십 KB <- __shared__ 가 쓰는 곳
+        // 종류가 다른 반도체라 속도가 수십 배 차이 난다. cudaMalloc 으로 VRAM 을 꽉 채워도
+        // 각 SM 의 공유 메모리는 그대로 남아 있다 (별개의 물리 메모리).
         std::printf("    VRAM               : %.2f GB total / %.2f GB free\n",
                     totalB / (1024.0 * 1024.0 * 1024.0), freeB / (1024.0 * 1024.0 * 1024.0));
         // 32. 블록 크기를 32의 배수로 잡는 근거 (→ 01 블록 크기 실험)
@@ -106,6 +112,9 @@ int main() {
         std::printf("    max grid size      : %d x %d x %d\n",
                     props.maxGridSize[0], props.maxGridSize[1], props.maxGridSize[2]);
         // size_t 이므로 %d 가 아니라 %zu. S2에서 타일 크기를 정하는 기준이 된다
+        // 커널 안 __shared__ 선언을 다 합쳐서 넘을 수 없는 양. 넘기면 런치 에러(→ 03).
+        //   예) __shared__ float tile[32][33] = 32*33*4 = 4,224 바이트
+        // 아래 shared mem/SM 과 숫자가 다른 이유는 거기 주석 참고.
         std::printf("    shared mem/block   : %zu bytes (%.1f KB)\n",
                     props.sharedMemPerBlock, props.sharedMemPerBlock / 1024.0);
         std::printf("    registers/block    : %d\n", props.regsPerBlock);
@@ -125,6 +134,30 @@ int main() {
         std::printf("    registers/SM       : %d  (스레드당 약 %d개)\n",
                     props.regsPerMultiprocessor,
                     props.regsPerMultiprocessor / props.maxThreadsPerMultiProcessor);
+        // /block 과 /SM 두 숫자가 따로 있는 이유 — 물리적으로는 SM 당 하나지만,
+        // 블록마다 칸을 나눠 주기 때문이다. 블록이 SM 에 올라올 때 자기 몫을 떼어 받고,
+        // 끝나면 반납해서 다음 블록이 그 자리를 쓴다.
+        //   ┌──── SM 의 공유 메모리 (물리적으로 하나) ────┐
+        //   │ [블록A][블록B][블록C][블록D]    (빈 공간)   │
+        //   │   A만    B만    C만    D만                 │
+        //   └────────────────────────────────────────────┘
+        //            서로 넘볼 수 없다 (칸막이)
+        //
+        // 블록 간에는 공유할 수 없다. 이유 셋:
+        //   - 동시에 상주한다는 보장이 없다 (블록 0 과 블록 15000 은 만날 일이 없다)
+        //   - 어느 SM 에 배정될지 모른다 (다른 칩 구역이면 공유 자체가 불가능)
+        //   - 같은 바이너리가 SM 8개 GPU 와 132개 GPU 에서 모두 돌아야 한다
+        // 블록 간 통신은 전역 메모리로, 동기화는 커널을 나누는 것으로 한다
+        // (커널 경계 = 모든 블록이 끝난 지점 = 사실상 유일한 전역 동기화 수단).
+        //
+        // 그리고 이 값이 occupancy 제약에 하나 더 추가된다:
+        //   ① 블록 자리        max blocks/SM
+        //   ② warp/스레드 자리  max threads/SM
+        //   ③ 공유 메모리      shared mem/SM ÷ 블록당 사용량     <- 여기
+        //   ④ 레지스터         registers/SM ÷ 블록당 사용량
+        //   SM 당 블록 수 = 위 넷 중 제일 작은 값
+        // 블록당 한도를 꽉 쓰면 (/SM ÷ /block) 개밖에 안 올라간다 → 공유 메모리가
+        // occupancy 를 직접 깎는 상황이 된다. 실제 예는 04_Transpose.
         std::printf("    shared mem/SM      : %zu bytes (%.1f KB)\n",
                     props.sharedMemPerMultiprocessor, props.sharedMemPerMultiprocessor / 1024.0);
         // 이 GPU 전체가 동시에 품는 스레드 수. 이만큼은 띄워야 GPU 가 꽉 찬다
