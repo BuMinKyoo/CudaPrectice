@@ -9,7 +9,8 @@
 // 서로 간섭할 일이 없었다. 리덕션은 다르다. 출력이 하나다.
 // 여러 쓰레드가 같은 칸에 기여해야 하니 처음으로 "협력"이 필요해진다.
 //
-// 네 커널 (교재 순서)
+// 커널 (교재 순서, 0 은 비교용)
+//   0) racySumReductionKernel        atomicAdd 없이 += . 답이 틀린다 (경쟁 상태)
 //   1) atomicSumReductionKernel      쓰레드마다 atomicAdd. 정답은 맞지만 느리다
 //   2) convergentSumReductionKernel  블럭 안에서 트리로 접는다 (블럭 하나만)
 //   3) sharedMemorySumReductionKernel  전역 대신 공유 메모리에서 접는다 (블럭 하나만)
@@ -66,12 +67,30 @@ void timedRun(const string name, const function<void()> &func) {
     CUDA_CHECK(cudaEventDestroy(stop));
 }
 
+// ---------------------------------------------------------------- 0) 경쟁 상태 (틀린 코드)
+// 아래 1) 의 주석에 설명된 "하면 안 되는 것" 을 실제로 해본다.
+// atomicAdd 없이 그냥 += 로 누적한다. 돌아가고, 죽지도 않고, 답만 틀린다.
+//
+// 읽기-더하기-쓰기가 세 단계로 쪼개져 있어서, 내가 읽고 쓰는 사이에 다른 쓰레드가
+// 끼어들면 그 쓰레드의 기여가 통째로 사라진다. 3355만 개가 동시에 덤비니
+// 거의 다 사라지고 합계가 정답의 극히 일부만 나온다.
+//
+// 보시면 안다 — 실행할 때마 결과가 달라진다. 입력은 고정 시드라 똑같은데도.
+// 재현되지 않는 버그가 가장 잡기 어렵다 (-> S4 의 compute-sanitizer)
+__global__ void racySumReductionKernel(float *input, float *output) {
+
+    unsigned int i = threadIdx.x + blockDim.x * blockIdx.x;
+
+    output[0] += input[i]; // <- 여러 쓰레드가 경쟁적으로 메모리에 접근하기 때문에 오류 발생
+}
+
 // ---------------------------------------------------------------- 1) atomic
 __global__ void atomicSumReductionKernel(float *input, float *output) {
 
     unsigned int i = threadIdx.x + blockDim.x * blockIdx.x;
 
     // output[0] += input[i]; // <- 여러 쓰레드가 경쟁적으로 메모리에 접근하기 때문에 오류 발생
+    //                           (위의 racySumReductionKernel 이 바로 그것이다)
 
     /*
     * 두 개의 쓰레드가 한 메모리 공간을 두고 경쟁(racing) 하는 사례
@@ -296,10 +315,35 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK_LAUNCH();
     CUDA_CHECK(cudaDeviceSynchronize());
 
+    const int numBlocks = (size + threadsPerBlock - 1) / threadsPerBlock;
+
+    // ---- 0) 경쟁 상태. atomicAdd 없이 그냥 += 한 버전 (틀린 답이 나온다)
+    // 같은 커널을 두 번 돌려서, 입력이 똑같은데도 답이 달라지는 것까지 보여준다.
+    clearOutput();
+    timedRun("Racy     ", [&]() {
+        racySumReductionKernel<<<numBlocks, threadsPerBlock>>>(dev_input, dev_output);
+        CUDA_CHECK_LAUNCH();
+    });
+    const double racy1 = readResult();
+
+    clearOutput();
+    racySumReductionKernel<<<numBlocks, threadsPerBlock>>>(dev_input, dev_output);
+    CUDA_CHECK_LAUNCH();
+    CUDA_CHECK(cudaDeviceSynchronize());
+    const double racy2 = readResult();
+
+    // 주의: 문자열을 한글로 끝내면 안 된다. nvcc 프론트엔드가 /utf-8 을 못 받아서
+    //       한글 마지막 바이트가 바로 뒤 문자를 짝으로 삼아 삼킨다.
+    //       \n 이 literal 로 찍히거나, 심하면 닫는 따옴표가 먹혀 컴파일이 깨진다.
+    cout << "    sum = " << fixed << setprecision(4) << racy1 << " (1st) / " << racy2
+         << " (2nd)  <- WRONG, 실행마다 다름 (!)" << endl;
+    cout << "    ref = " << sumRef << "  ->  정답의 " << setprecision(4)
+         << 100.0 * racy1 / sumRef << " % 만 살아남았다 (!)" << defaultfloat << setprecision(6)
+         << endl;
+
     // ---- 1) 전체 배열, 쓰레드마다 atomicAdd
     clearOutput();
     timedRun("Atomic   ", [&]() {
-        int numBlocks = (size + threadsPerBlock - 1) / threadsPerBlock;
         atomicSumReductionKernel<<<numBlocks, threadsPerBlock>>>(dev_input, dev_output);
         CUDA_CHECK_LAUNCH();
     }); // 68 ms
@@ -343,6 +387,8 @@ int main(int argc, char *argv[]) {
          << fabs((double)sumCpu - sumRef) / sumRef << defaultfloat << setprecision(6) << endl;
 
     cout << endl << "[해석 거리 - README 에 적어볼 것]" << endl;
+    cout << "  - 0) 이 1) 보다 훨씬 빠르다. 틀린 코드가 빠른 것이 왜 위험한가 (?)" << endl;
+    cout << "  - 0) 에서 기여가 사라지는 과정을 쓰레드 2개로 적어볼 것 (커널 주석 참고)" << endl;
     cout << "  - 1) 이 느린 이유. atomicAdd 호출 횟수와 시간이 비례하는가 (?)" << endl;
     cout << "  - 2) -> 3) 은 접는 방식이 같은데 왜 빨라지는가 (?)" << endl;
     cout << "  - 1) 의 오차가 CPU float 순차합과 비슷한 이유 (?)" << endl;
