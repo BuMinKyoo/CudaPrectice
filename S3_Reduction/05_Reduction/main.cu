@@ -1,4 +1,4 @@
-// 06_Reduction — S3 리덕션: N개를 1개로 접기
+// 05_Reduction — S3 리덕션: N개를 1개로 접기
 //
 // 교재: "Programming Massively Parallel Processors: A Hands-on Approach" 4th
 // 참고 자료
@@ -224,7 +224,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    cout << "=== 06_Reduction  size = " << size << " (" << (size * sizeof(float) / 1048576)
+    cout << "=== 05_Reduction  size = " << size << " (" << (size * sizeof(float) / 1048576)
          << " MB) ===" << endl;
     cout << "threadsPerBlock = " << threadsPerBlock << ", 1-block range = " << oneBlockSize << endl
          << endl;

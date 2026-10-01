@@ -22,9 +22,8 @@
   </Folder>
   <Folder Name="/S2_Memory/">
     <Project Path="S2_Memory/04_Transpose/04_Transpose.vcxproj" Id="54ea98bc-c578-4e3d-86be-f179ed8337d8" />
-    <Project Path="S2_Memory/05_BlurShared/05_BlurShared.vcxproj" Id="01359934-e648-40ed-ad35-3c332c7b7292" />
   </Folder>
   <Folder Name="/S3_Reduction/">
-    <Project Path="S3_Reduction/06_Reduction/06_Reduction.vcxproj" />
+    <Project Path="S3_Reduction/05_Reduction/05_Reduction.vcxproj" Id="4da4894a-02a6-4517-8883-4de72303b896" />
   </Folder>
 </Solution>

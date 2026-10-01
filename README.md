@@ -29,10 +29,9 @@ CudaPrectice/
 │  ├─ 02_BgrToGray            2D 인덱싱, BGR → gray, CPU와 바이트 비교
 │  └─ 03_AsyncAndErrors       비동기 런치, cudaEvent 시간, 런치 에러
 ├─ S2_Memory/
-│  ├─ 04_Transpose            coalescing, 공유 메모리로 접근 순서 바꾸기, bank conflict
-│  └─ 05_BlurShared           공유 메모리로 중복 읽기 없애기, halo(apron)
+│  └─ 04_Transpose            coalescing, bank conflict, halo 로 중복 읽기 없애기
 └─ S3_Reduction/
-   └─ 06_Reduction            atomicAdd 경합, warp divergence, coarsening, float 결합법칙
+   └─ 05_Reduction            atomicAdd 경합, warp divergence, coarsening, float 결합법칙
 ```
 빌드 결과는 `bin/x64/<Config>/`, 중간 파일은 `obj/` (둘 다 git 제외).
 
@@ -41,7 +40,7 @@ CudaPrectice/
 2. 구성 **Release | x64**
 3. `00_DeviceQuery` 를 시작 프로젝트로 → 실행 → smoke test `OK` 확인
 4. 출력된 `sm_XY` 를 `Directory.Build.props` 의 `CudaArch` 에 넣기 (빌드 시간 단축)
-5. `01` → `02` → `03` → `04` → `05` → `06` 순서로 실행하고 각 README 표 채우기
+5. `01` → `02` → `03` → `04` → `05` 순서로 실행하고 각 README 표 채우기
 
 ## 새 예제 추가
 ```powershell
@@ -71,8 +70,7 @@ CudaPrectice/
 | S1 | 03_AsyncAndErrors | ⬜ |
 | S1 | `preprocess.cu` 읽고 S1 개념 주석 달기 (원본 레포에서) | ⬜ |
 | S2 | 04_Transpose | ⬜ |
-| S2 | 05_BlurShared | ⬜ |
-| S3 | 06_Reduction | ⬜ |
+| S3 | 05_Reduction | ⬜ |
 
 ## 로드맵 (S0~S10)
 

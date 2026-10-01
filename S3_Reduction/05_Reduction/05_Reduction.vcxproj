@@ -12,8 +12,8 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{4DA4894A-02A6-4517-8883-4DE72303B896}</ProjectGuid>
-    <RootNamespace>P06Reduction</RootNamespace>
-    <ProjectName>06_Reduction</ProjectName>
+    <RootNamespace>P05Reduction</RootNamespace>
+    <ProjectName>05_Reduction</ProjectName>
     <Keyword>Win32Proj</Keyword>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

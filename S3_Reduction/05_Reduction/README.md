@@ -1,4 +1,4 @@
-# 06_Reduction — 협력과 리덕션
+# 05_Reduction — 협력과 리덕션
 
 교재: *Programming Massively Parallel Processors: A Hands-on Approach* 4th
 
@@ -64,7 +64,7 @@
 
 ```
 Release | x64 로 빌드 후 실행
-06_Reduction.exe
+05_Reduction.exe
 ```
 
 `Atomic` 항목에서 1분쯤... 은 아니고 60 ms 정도 멈춘다. 정상이다.
@@ -135,7 +135,7 @@ float 로 3355만번 누적하면 **`sumCpu` 자체가 정답이 아니다.** �
 ## 확인해볼 도구 (S4 예고)
 
 ```
-ncu --metrics l1tex__data_bank_conflicts_pipe_lsu_mem_shared.sum,smsp__inst_executed_op_global_red.sum 06_Reduction.exe
+ncu --metrics l1tex__data_bank_conflicts_pipe_lsu_mem_shared.sum,smsp__inst_executed_op_global_red.sum 05_Reduction.exe
 ```
 
 ## 다음에 연결
