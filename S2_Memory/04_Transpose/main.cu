@@ -39,10 +39,26 @@ __global__ void Copy(const float* in, float* out, int n) {
 }
 
 // ---------------------------------------------------------------- B) 순진한 전치
-// out[x][y] = in[y][x] 를 그대로 옮겨 적었다. 논리적으로는 맞다.
-//   읽기  in[(y+j)*n + x]  : threadIdx.x 가 1 늘면 주소도 4바이트 옆 → 연속
-//   쓰기  out[x*n + (y+j)] : threadIdx.x 가 1 늘면 주소가 n*4 바이트 점프 → 비연속
-// warp 32개 스레드가 32군데 흩어진 곳에 쓴다 → 쓰기 트랜잭션이 32배로 튄다.
+// out[x][y] = in[y][x] 를 그대로 옮겨 적었다. 논리적으로는 맞다(mismatch 0).
+// 느린 이유는 주소에 있다. warp 안에서 threadIdx.x 가 0 -> 31 로 갈 때,
+// n = 4096 / float 이면 한 행이 4096 * 4 = 16,384 바이트(16KB)다.
+//
+//   읽기  in[(y+j)*n + x]    x 가 1 늘면 주소 +4 바이트
+//                            0, 4, 8, 12, ... 124      -> 128바이트 연속        OK
+//
+//   쓰기  out[x*n + (y+j)]   x 가 1 늘면 주소 +16,384 바이트 (한 행 통째)
+//                            0, 16K, 32K, 48K, ...     -> 16KB 씩 흩어짐        BAD
+//
+// 왜 이게 문제인가 — GPU 는 VRAM 을 32바이트 단위로 주고받는다.
+// 4바이트만 필요해도 32바이트를 통째로 싣고 온다. 그래서:
+//
+//                     트랜잭션 수   한 번에 쓰는 양   활용률
+//   읽기 (연속 128B)       4 번        32 / 32 B      100%
+//   쓰기 (흩어진 32곳)    32 번         4 / 32 B      12.5%   <- 8배 낭비
+//
+// 옮긴 데이터 양은 읽기와 똑같은데 트랜잭션만 8배다.
+// 트럭 비유로는 "트럭 수(occupancy)" 가 아니라 "트럭에 얼마나 실었나" 의 문제다.
+// 쓰기 한쪽만 망가졌는데 전체가 Copy 의 26% 로 떨어진다.
 __global__ void TransposeNaive(const float* in, float* out, int n) {
     const int x = blockIdx.x * TILE_DIM + threadIdx.x;
     const int y = blockIdx.y * TILE_DIM + threadIdx.y;
@@ -84,18 +100,42 @@ __global__ void TransposeShared(const float* in, float* out, int n) {
         }
     }
 
-    // 다만 tile[threadIdx.x][...] 는 타일을 세로로 읽는 꼴이다.
-    // 공유 메모리는 32개 bank 로 나뉘고 bank 번호 = (주소/4) % 32 인데,
-    // 한 행이 32 float 이라 세로로 읽으면 32개 스레드가 전부 같은 bank 를 친다.
-    //   → 32-way bank conflict. 동시에 못 읽고 32번에 나눠 읽는다.  (해결은 D)
+    // 이제 전역 메모리는 읽기도 쓰기도 연속이다. 그런데 Copy 의 60% 밖에 안 나온다.
+    // 범인은 tile[threadIdx.x][...] — 타일을 "세로로" 읽는 꼴이기 때문이다.
+    //
+    // 공유 메모리는 32개 bank 로 나뉘어 있고  bank 번호 = (주소 / 4) % 32 다.
+    //   32개 스레드가 서로 다른 bank  → 동시에 처리
+    //   여러 스레드가 같은 bank        → 줄 서서 순서대로
+    //
+    // warp 안에서 tx(threadIdx.x) 가 0 -> 31 로 갈 때, 한 행이 32 float 이면:
+    //
+    //   tile[tx][c] 위치 = tx * 32 + c
+    //   bank = (tx * 32 + c) % 32 = c % 32        <- tx 가 사라진다!
+    //
+    //   tx   :  0    1    2   ...  31
+    //   bank :  c    c    c   ...   c             <- 전부 같은 bank
+    //
+    //   → 32-way bank conflict. 한 번에 못 읽고 32번에 나눠 읽는다.  (해결은 D)
 }
 
 // ---------------------------------------------------------------- D) 패딩 한 칸
-// 행 길이를 32 → 33 으로 늘린다. 공유 메모리를 4KB 더 쓰지만 계산식은 그대로다.
-//   기존: tile[r][c] 위치 = r*32 + c  → bank = (r*32 + c) % 32 = c % 32
-//         세로로 읽으면(r 만 증가) bank 가 안 바뀐다 → 전부 충돌
-//   패딩: tile[r][c] 위치 = r*33 + c  → bank = (r*33 + c) % 32 = (r + c) % 32
-//         r 이 1 늘면 bank 도 1 밀린다 → 32개가 전부 다른 bank
+// C 와 코드가 딱 한 글자 다르다. 행 길이를 32 -> 33 으로 늘릴 뿐,
+// 인덱스 계산식은 아래에서 한 글자도 안 바뀐다.
+//
+//   【C】 한 행이 32 float
+//     tile[tx][c] 위치 = tx * 32 + c
+//     bank = (tx * 32 + c) % 32 = c % 32              <- tx 가 사라진다
+//     tx   :  0    1    2   ...  31
+//     bank :  c    c    c   ...   c                   <- 전부 충돌        BAD
+//
+//   【D】 한 행이 33 float   (33 % 32 = 1 이 핵심)
+//     tile[tx][c] 위치 = tx * 33 + c
+//     bank = (tx * 33 + c) % 32 = (tx + c) % 32       <- tx 가 살아남는다
+//     tx   :  0    1    2   ...  31
+//     bank :  c   c+1  c+2  ... c+31  (mod 32)        <- 전부 다른 bank   OK
+//
+// 행을 하나 넘어갈 때마다 bank 가 1칸씩 밀리는 것이 전부다.
+// 비용은 공유 메모리 32 * 1 * 4 = 128 바이트/블록 추가뿐이다.
 __global__ void TransposeSharedPadded(const float* in, float* out, int n) {
     __shared__ float tile[TILE_DIM][TILE_DIM + 1];   // ← 이 +1 이 전부다
 
