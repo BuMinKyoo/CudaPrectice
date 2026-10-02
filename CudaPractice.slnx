@@ -29,4 +29,7 @@
   <Folder Name="/S4_Debugging/">
     <Project Path="S4_Debugging/06_Sanitizer/06_Sanitizer.vcxproj" />
   </Folder>
+  <Folder Name="/S5_Streams/">
+    <Project Path="S5_Streams/07_Streams/07_Streams.vcxproj" />
+  </Folder>
 </Solution>
