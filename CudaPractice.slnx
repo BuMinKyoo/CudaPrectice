@@ -32,4 +32,7 @@
   <Folder Name="/S5_Streams/">
     <Project Path="S5_Streams/07_Streams/07_Streams.vcxproj" />
   </Folder>
+  <Folder Name="/S6_Libraries/">
+    <Project Path="S6_Libraries/08_Thrust/08_Thrust.vcxproj" />
+  </Folder>
 </Solution>
