@@ -26,4 +26,7 @@
   <Folder Name="/S3_Reduction/">
     <Project Path="S3_Reduction/05_Reduction/05_Reduction.vcxproj" Id="4da4894a-02a6-4517-8883-4de72303b896" />
   </Folder>
+  <Folder Name="/S4_Debugging/">
+    <Project Path="S4_Debugging/06_Sanitizer/06_Sanitizer.vcxproj" />
+  </Folder>
 </Solution>
