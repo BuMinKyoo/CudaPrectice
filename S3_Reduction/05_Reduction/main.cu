@@ -214,8 +214,9 @@ __global__ void segmentedSumReductionKernel(float *input, float *output) {
     unsigned int t = threadIdx.x;
 
     // 위의 두 개를 잘 합치면 됩니다.
+    // 공유메모리는 블럭별로 다르기 때문에 서로 겹치지 않는다
     inputShared[t] = input[i] + input[i + blockDim.x];
-
+    
     for (unsigned int stride = blockDim.x / 2; stride >= 1; stride /= 2) {
         __syncthreads();
         if (t < stride) {
