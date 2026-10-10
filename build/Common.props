@@ -18,6 +18,9 @@
     </ClCompile>
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
+      <!-- sanitizer / Nsight 가 보고할 때 main.cu:85 처럼 줄번호를 찍게 한다.
+           -G (디바이스 디버그) 와 달리 최적화를 끄지 않으므로 Release 에도 켜둔다. -->
+      <GenerateLineInfo>true</GenerateLineInfo>
       <AdditionalIncludeDirectories>$(CudaPracticeRoot)common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <!-- 한글 주석 때문에 호스트 컴파일러(cl)를 UTF-8 모드로. 없으면 C4819 + 줄 먹힘 버그 가능 -->
       <AdditionalOptions>-std=c++17 -Xcompiler "/utf-8" %(AdditionalOptions)</AdditionalOptions>
