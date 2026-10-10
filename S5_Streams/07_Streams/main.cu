@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
     // iters 는 커널 시간을 전송 시간과 비슷하게 맞추려고 고른 값이다.
     // 커널이 너무 무거우면 겹쳐도 비율이 안 보인다 (전송이 다 숨어도 커널 시간은 그대로다).
     // 반대로 너무 가벼우면 전송이 다 차지해서 역시 안 보인다.
-    const int iters = (argc > 2) ? std::atoi(argv[2]) : 50;
+    const int iters = (argc > 2) ? std::atoi(argv[2]) : 256;
     const int nStreams = (argc > 3) ? std::atoi(argv[3]) : 4;
     const int nChunks = (argc > 4) ? std::atoi(argv[4]) : 16;   // 조각 수. 스트림보다 충분히 많아야 한다
 
@@ -134,6 +134,10 @@ int main(int argc, char** argv) {
     // ---- 구성 요소를 따로 재둔다. 겹침 결과를 읽으려면 "숨길 수 있는 양" 을 알아야 한다.
     float* hTmp = nullptr;
     CUDA_CHECK(cudaMallocHost((void**)&hTmp, totalBytes));
+    // 갓 cudaMallocHost 한 버퍼는 첫 DMA 때 드라이버가 매핑하느라 6 ms 쯤 더 걸린다.
+    // 그 비용은 cudaEvent 에는 안 잡히고 벽시계에만 잡혀서, 워밍업 없이 재면
+    // D2H 가 16 ms 로 부풀려진다 (실제는 10 ms 대). 한 번 버리고 잰다.
+    CUDA_CHECK(cudaMemcpy(hTmp, dFull, totalBytes, cudaMemcpyDeviceToHost));
     t.Start();
     CUDA_CHECK(cudaMemcpy(hTmp, dFull, totalBytes, cudaMemcpyDeviceToHost));
     const double d2hPinned = t.ElapsedMs();
@@ -180,6 +184,7 @@ int main(int argc, char** argv) {
     // ================================================================
     float* hOutPinned = nullptr;
     CUDA_CHECK(cudaMallocHost((void**)&hOutPinned, totalBytes));
+    runSync(hPinned, hOutPinned);   // 워밍업. A 에만 있고 B 에 없으면 B 만 위의 매핑 비용을 떠안는다
 
     t.Start();
     runSync(hPinned, hOutPinned);
@@ -250,9 +255,11 @@ int main(int argc, char** argv) {
     }
     std::printf("\n    mismatch (A vs D) = %zu\n", bad);
 
-    const double floorMs = kernelMs;
+    // 복사 엔진이 1개면 H2D 와 D2H 가 서로 겹치지 못하고 줄을 선다.
+    // 그래서 바닥은 "커널만" 이 아니라 max(커널, H2D + D2H) 이다.
+    const double floorMs = std::max(kernelMs, h2dPinned + d2hPinned);
     const double serialMs = h2dPinned + kernelMs + d2hPinned;
-    std::printf("\n    단순 합 %.2f ms -> D %.2f ms,  커널만 돌릴 때는 %.2f ms\n",
+    std::printf("\n    단순 합 %.2f ms -> D %.2f ms,  현실적 바닥은 %.2f ms\n",
                 serialMs, msD, floorMs);
     std::printf("    숨긴 복사 시간 = %.2f ms  (숨길 수 있던 양 %.2f ms 중 %.0f%%)\n",
                 serialMs - msD, serialMs - floorMs,
