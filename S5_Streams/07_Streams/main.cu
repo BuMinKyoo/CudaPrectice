@@ -209,17 +209,42 @@ int main(int argc, char** argv) {
         CUDA_CHECK(cudaStreamCreate(&st[s]));
     }
 
+    // 제출 "순서" 가 결과를 가른다 (breadth-first).
+    //
+    // 복사 엔진이 1개인 GPU(asyncEngineCount == 1)에서는 H2D 와 D2H 가
+    // 하나의 큐에 "제출한 순서대로" 줄을 선다. 그리고 복사 엔진은 in-order 라
+    // 앞이 막히면 뒤를 당겨오지 못한다.
+    //
+    // 조각마다 H2D -> 커널 -> D2H 를 묶어서 넣으면(depth-first) 이렇게 된다:
+    //     복사 큐:  H2D0, D2H0, H2D1, D2H1, ...
+    //   D2H0 은 커널0 이 끝나야 시작할 수 있는데(같은 스트림, 데이터 의존성),
+    //   그 뒤에 선 H2D1 은 아무 의존성이 없는데도 같이 막힌다 (head-of-line blocking).
+    //   그래서 스트림을 몇 개 만들든 [H2D][커널][D2H] 가 완전히 직렬로 돈다.
+    //
+    // 단계별로 모아서 넣으면(breadth-first) 복사 큐가 이렇게 된다:
+    //     복사 큐:  H2D0, H2D1, ..., D2H0, D2H1, ...
+    //   커널0 이 SM 에서 도는 동안 복사 엔진은 H2D1, H2D2 ... 를 계속 밀어 넣는다.
+    //   드디어 겹친다.
+    //
+    // 복사 엔진이 2개면 H2D 큐와 D2H 큐가 분리되어 depth-first 로도 잘 돈다.
+    // 엔진이 1개일 때만 터지는 함정이다.
     auto runAsync = [&](int streams) {
         for (int c = 0; c < nChunks; ++c) {
-            const int s = c % streams;
             const size_t off = static_cast<size_t>(c) * chunkN;
-
             CUDA_CHECK(cudaMemcpyAsync(dFull + off, hPinned + off, chunkBytes,
-                                       cudaMemcpyHostToDevice, st[s]));
-            Work<<<DivUp(chunkN, block), block, 0, st[s]>>>(dFull + off, chunkN, iters);
+                                       cudaMemcpyHostToDevice, st[c % streams]));
+        }
+
+        for (int c = 0; c < nChunks; ++c) {
+            const size_t off = static_cast<size_t>(c) * chunkN;
+            Work<<<DivUp(chunkN, block), block, 0, st[c % streams]>>>(dFull + off, chunkN, iters);
             CUDA_CHECK_LAUNCH();
+        }
+
+        for (int c = 0; c < nChunks; ++c) {
+            const size_t off = static_cast<size_t>(c) * chunkN;
             CUDA_CHECK(cudaMemcpyAsync(hOutPinned + off, dFull + off, chunkBytes,
-                                       cudaMemcpyDeviceToHost, st[s]));
+                                       cudaMemcpyDeviceToHost, st[c % streams]));
         }
 
         CUDA_CHECK(cudaDeviceSynchronize());   // 전부 끝날 때까지 여기서 한 번만 기다린다
